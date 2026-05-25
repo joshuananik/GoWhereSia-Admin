@@ -9,6 +9,7 @@ import { UsersPage } from './pages/Users';
 import { AnalyticsPage } from './pages/Analytics';
 import { GameConfigPage } from './pages/GameConfig';
 import { NotificationsPage } from './pages/Notifications';
+import { GodModePage } from './pages/GodMode';
 
 const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
 
@@ -19,7 +20,8 @@ export type AdminPage =
   | { name: 'users' }
   | { name: 'analytics' }
   | { name: 'game_config' }
-  | { name: 'notifications' };
+  | { name: 'notifications' }
+  | { name: 'god_mode' };
 
 const NAV_ITEMS: { name: AdminPage['name']; label: string; icon: string }[] = [
   { name: 'overview', label: 'Overview', icon: '◎' },
@@ -28,6 +30,7 @@ const NAV_ITEMS: { name: AdminPage['name']; label: string; icon: string }[] = [
   { name: 'analytics', label: 'Analytics', icon: '📊' },
   { name: 'game_config', label: 'Game Config', icon: '⚙️' },
   { name: 'notifications', label: 'Notifications', icon: '🔔' },
+  { name: 'god_mode', label: 'God Mode', icon: '🌐' },
 ];
 
 export function App() {
@@ -128,6 +131,7 @@ export function App() {
           {page.name === 'analytics' && <AnalyticsPage />}
           {page.name === 'game_config' && <GameConfigPage />}
           {page.name === 'notifications' && <NotificationsPage />}
+          {page.name === 'god_mode' && <GodModePage />}
         </div>
       </main>
     </div>

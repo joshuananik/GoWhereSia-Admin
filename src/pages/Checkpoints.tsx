@@ -1,51 +1,83 @@
 import { useEffect, useRef, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { supabase } from '../lib/supabase';
 import { Checkpoint, CheckpointInput, Tier } from '../types';
 
-function MapPicker({ lat, lng, onChange }: { lat: number; lng: number; onChange: (lat: number, lng: number) => void }) {
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>html,body,#map{margin:0;padding:0;height:100%;}</style>
-</head>
-<body>
-<div id="map"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-var initLat=${lat && lat !== 1.3521 ? lat : 1.3521};
-var initLng=${lng && lng !== 103.8198 ? lng : 103.8198};
-var map=L.map('map',{zoomControl:true}).setView([initLat,initLng],16);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20,subdomains:'abcd'}).addTo(map);
-var marker=L.marker([initLat,initLng],{draggable:true}).addTo(map);
-function emit(latlng){window.parent.postMessage({type:'mapcoords',lat:latlng.lat,lng:latlng.lng},'*');}
-marker.on('dragend',function(e){emit(e.target.getLatLng());});
-map.on('click',function(e){marker.setLatLng(e.latlng);emit(e.latlng);});
-</script>
-</body>
-</html>`;
+// Fix default marker icons broken by Vite's asset bundling
+L.Icon.Default.mergeOptions({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'mapcoords') {
-        onChange(Number(e.data.lat.toFixed(6)), Number(e.data.lng.toFixed(6)));
-      }
-    };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, [onChange]);
+function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onMapClick(Number(e.latlng.lat.toFixed(6)), Number(e.latlng.lng.toFixed(6)));
+    },
+  });
+  return null;
+}
 
+function MapPicker({
+  lat, lng, onChange, radius, onRadiusChange,
+}: {
+  lat: number;
+  lng: number;
+  onChange: (lat: number, lng: number) => void;
+  radius: number;
+  onRadiusChange: (r: number) => void;
+}) {
   return (
     <div>
-      <iframe
-        srcDoc={html}
-        style={{ width: '100%', height: 300, border: '2px solid #2D2D2D', borderRadius: 4, display: 'block' }}
-        title="Coordinate picker — click or drag pin to set checkpoint location"
-        sandbox="allow-scripts"
-      />
-      <p style={{ margin: '6px 0 0', fontSize: 12, color: '#5A5A5A' }}>
-        Click map or drag pin to set location. Current: {lat.toFixed(6)}, {lng.toFixed(6)}
-      </p>
+      <div style={{ border: '2px solid #2D2D2D', borderRadius: 4, overflow: 'hidden' }}>
+        <MapContainer
+          center={[lat, lng]}
+          zoom={17}
+          style={{ width: '100%', height: 300 }}
+          scrollWheelZoom
+        >
+          <TileLayer
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            maxZoom={20}
+            subdomains={['a', 'b', 'c', 'd']}
+          />
+          <MapClickHandler onMapClick={onChange} />
+          <Marker
+            position={[lat, lng]}
+            draggable
+            eventHandlers={{
+              dragend(e) {
+                const ll = (e.target as L.Marker).getLatLng();
+                onChange(Number(ll.lat.toFixed(6)), Number(ll.lng.toFixed(6)));
+              },
+            }}
+          />
+          <Circle
+            center={[lat, lng]}
+            radius={radius}
+            pathOptions={{ color: '#E8192C', fillColor: '#E8192C', fillOpacity: 0.15, weight: 2 }}
+          />
+        </MapContainer>
+      </div>
+      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 12, color: '#A0A0A0', flexShrink: 0, fontWeight: 700 }}>
+          Radius: {radius}m
+        </span>
+        <input
+          type="range"
+          min={10}
+          max={200}
+          value={radius}
+          onChange={(e) => onRadiusChange(Number(e.target.value))}
+          style={{ flex: 1, accentColor: '#E8192C' }}
+        />
+        <span style={{ fontSize: 11, color: '#5A5A5A', flexShrink: 0 }}>
+          {lat.toFixed(6)}, {lng.toFixed(6)}
+        </span>
+      </div>
     </div>
   );
 }
@@ -204,6 +236,7 @@ export function CheckpointsPage({ routeId, routeName, onBack }: CheckpointsPageP
 
       {(creating || editing) && (
         <CheckpointForm
+          key={editing ? editing.id : 'new'}
           form={form}
           onChange={setForm}
           onSave={handleSave}
@@ -325,7 +358,7 @@ function CheckpointForm({
             <input style={styles.input} type="number" step="0.000001" value={form.lng} onChange={(e) => set('lng', Number(e.target.value))} />
           </Field>
           <Field label="Geofence radius (m)">
-            <input style={styles.input} type="number" value={form.radius_meters} onChange={(e) => set('radius_meters', Number(e.target.value))} />
+            <input style={styles.input} type="number" min={10} max={200} value={form.radius_meters} onChange={(e) => set('radius_meters', Number(e.target.value))} />
           </Field>
         </div>
 
@@ -350,12 +383,14 @@ function CheckpointForm({
           </Field>
         </div>
 
-        {/* Map coordinate picker */}
-        <Field label="Checkpoint location — click map to set coordinates">
+        {/* Map coordinate picker with visual geofence circle */}
+        <Field label="Checkpoint location — click map or drag pin to set coordinates">
           <MapPicker
             lat={form.lat}
             lng={form.lng}
             onChange={(lat, lng) => onChange({ ...form, lat, lng })}
+            radius={form.radius_meters}
+            onRadiusChange={(r) => onChange({ ...form, radius_meters: r })}
           />
         </Field>
 
