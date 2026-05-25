@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Route, RouteInput, Difficulty } from '../types';
 
@@ -185,8 +185,38 @@ function RouteForm({
   saving: boolean;
   isEdit: boolean;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   function set<K extends keyof RouteInput>(key: K, value: RouteInput[K]) {
     onChange({ ...form, [key]: value });
+  }
+
+  async function handleHeroUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
+    const path = `hero_${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('route-images')
+      .upload(path, file, { upsert: true, contentType: file.type });
+
+    if (error) {
+      setUploadError(error.message);
+      setUploading(false);
+      return;
+    }
+
+    const { data } = supabase.storage.from('route-images').getPublicUrl(path);
+    set('hero_image_url', data.publicUrl);
+    setUploading(false);
+    // Reset file input so same file can be re-uploaded if needed
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   return (
@@ -240,8 +270,44 @@ function RouteForm({
             <input style={styles.input} type="number" value={form.clock_par_fullsend} onChange={(e) => set('clock_par_fullsend', Number(e.target.value))} />
           </Field>
 
-          <Field label="Hero image URL" cols={2}>
-            <input style={styles.input} value={form.hero_image_url ?? ''} onChange={(e) => set('hero_image_url', e.target.value || null)} placeholder="https://..." />
+          <Field label="Hero image" cols={2}>
+            <div style={styles.imageUploadRow}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleHeroUpload}
+              />
+              <button
+                style={styles.uploadBtn}
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? 'Uploading…' : 'Choose image'}
+              </button>
+              {form.hero_image_url && (
+                <img
+                  src={form.hero_image_url}
+                  alt="Hero preview"
+                  style={styles.heroThumb}
+                />
+              )}
+              {!form.hero_image_url && (
+                <span style={{ color: '#5A5A5A', fontSize: 12 }}>No image uploaded</span>
+              )}
+            </div>
+            {uploadError && <div style={{ color: '#FFB4AB', fontSize: 12, marginTop: 4 }}>{uploadError}</div>}
+            <div style={{ color: '#5A5A5A', fontSize: 11, marginTop: 4 }}>
+              Or paste a URL directly:
+            </div>
+            <input
+              style={styles.input}
+              value={form.hero_image_url ?? ''}
+              onChange={(e) => set('hero_image_url', e.target.value || null)}
+              placeholder="https://..."
+            />
           </Field>
         </div>
 
@@ -372,4 +438,13 @@ const styles: Record<string, React.CSSProperties> = {
   checkRow: { display: 'flex', gap: 24, marginBottom: 20 },
   checkLabel: { display: 'flex', alignItems: 'center', gap: 8, color: '#A0A0A0', fontSize: 14, cursor: 'pointer' },
   formActions: { display: 'flex', gap: 12, justifyContent: 'flex-end' },
+  imageUploadRow: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 },
+  uploadBtn: {
+    background: '#2A2A2A', border: '2px solid #3A3939', borderRadius: 4,
+    color: '#A0A0A0', cursor: 'pointer', fontSize: 13, padding: '8px 14px',
+  },
+  heroThumb: {
+    width: 80, height: 50, objectFit: 'cover' as const,
+    borderRadius: 4, border: '2px solid #3A3939',
+  },
 };
